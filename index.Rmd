@@ -1,0 +1,163 @@
+---
+title: "index"
+author: "gntem2"
+date: "05/09/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+
+```{r web}
+library(rvest)
+###https://www.r-bloggers.com/beautifulsoup-vs-rvest/
+###http://bradleyboehmke.github.io/2015/12/scraping-html-tables.html
+###extract web page
+#gtwg<-read_html("https://www.verywellhealth.com/joint-commission-certified-stroke-centers-by-state-3146380")
+
+
+##xml document-tree representation of web content
+
+# scrape all div tags
+#html_tag <- gtwg %>% html_nodes("div")
+
+#
+# scrape header h1 tags
+#html_list<-html_tag %>% html_nodes("h3") %>% html_text()
+#html_list[[1]]
+
+##Using CSS selectors to scrap the blog content
+###p= paragraph
+#content_data_html <- html_nodes(gtwg,'p')
+
+##acute stroke ready hospital
+### [6] generate list at 6th para
+#asrh<-content_data_html[6] %>% html_text() 
+
+##advance comprehensive stroke centre
+#acsc<-content_data_html[7:10] %>% html_text()
+
+##advance primary stroke centre
+#apsc<-content_data_html[11:30] %>% html_text()
+
+#write.csv(asrh,file="asrh.csv")
+#write.csv(acsc,file="acsc.csv")
+#write.csv(apsc,file="apsc.csv")
+##
+ 
+```
+
+
+
+```{r excel}
+##download from joint commission
+#https://www.qualitycheck.org/data-download/certification-data-download/
+
+library(readxl)
+library(dplyr)
+library(leaflet)
+library(sf)
+library(tmap)
+library(dodgr)
+
+stroke<-read_xlsx("StrokeCertificationList.xlsx")
+
+#remove rehab hospitals
+stroke %>% filter(CertificationProgram !="Stroke Rehabilitation")
+
+#geocode hospitals in MA
+source("Search.R") #ggmap
+
+addresses = stroke$OrganizationName
+city = stroke$City
+addresses = paste0(addresses, ",",city,",USA")
+#hospUS<-geocode(addresses) #only geocode once
+
+
+#stroke2<-cbind.data.frame(stroke,hospUS)
+#save(stroke2,file="stroke2_gwtg_hosp.Rda")
+
+load("stroke2_gwtg_hosp.Rda")
+```
+
+```{r map}
+
+##access shapefiles
+##https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html
+
+uscounty<-st_read("tl_2019_us_county/tl_2019_us_county.shp")
+
+
+##subset MA
+MAcounty<-filter(uscounty,STATEFP==25)
+
+##proj4string:    +proj=longlat +datum=NAD83 +no_defs
+u<-ggplot() + 
+  geom_sf(data = MAcounty, size = 3, color = "black") + 
+  ggtitle("USA Counties") + 
+  coord_sf()
+u
+
+#WGS84 is EPSG:4326
+#MAcounty2<-sf::st_transform(MAcounty,sf::st_crs(4326)) #epsg4269
+MAcounty2<-st_transform(MAcounty,4326)
+
+#create new columns
+stroke2$ACSC[stroke2$CertificationProgram == "Advanced Comprehensive Stroke Center"]<-1
+stroke2$ACSC[stroke2$CertificationProgram != "Advanced Comprehensive Stroke Center"]<-0
+
+stroke2$APSC[stroke2$CertificationProgram == "Advanced Primary Stroke Center"]<-1
+stroke2$APSC[stroke2$CertificationProgram != "Advanced Primary Stroke Center"]<-0
+
+stroke2$Rehab[stroke2$CertificationProgram == "Stroke Rehabilitation"]<-1
+stroke2$Rehab[stroke2$CertificationProgram != "Stroke Rehabilitation"]<-0
+
+#subset
+#stroke2acute<- stroke2 %>% filter(CertificationProgram %in% c("Stroke Rehabilitation","Advanced Primary Stroke Centre","Acute Stroke Ready Hospital"))
+
+stroke2acute1<- filter(stroke2, CertificationProgram == "Advanced Comprehensive Stroke Center")
+
+stroke2acute2<- filter(stroke2, CertificationProgram ==  "Advanced Thrombectomy Capable Stroke Ctr")
+
+stroke2acute<-rbind.data.frame(stroke2acute1,stroke2acute2)
+
+pal <- colorFactor(
+    palette = c("red","yellow","blue"),
+    domain = as.factor(stroke2$CertificationProgram))
+
+
+m<-leaflet (data=stroke2) %>%
+setView(-71.1, 42.3, 4) %>%
+addTiles() %>%
+  
+#first later
+addCircleMarkers(lng=stroke2$lon,lat=stroke2$lat,radius=4,color=~pal(as.factor(stroke2$CertificationProgram)),popup = paste0("Hospital=",stroke2$OrganizationName,", Certification=",stroke2$CertificationProgram))%>%
+  addLegend(pal=pal,values = stroke2$CertificationProgram,title = "GWTG Certification Program") %>%
+
+#second layer with cluster
+#addCircleMarkers(lng=stroke2acute$lon,lat=stroke2acute$lat,radius=2,color=~pal(as.factor(stroke2acute$CertificationProgram)),clusterOptions = markerClusterOptions(),popup = paste0("Hospital=",stroke2acute$OrganizationName,", Certification=",stroke2acute$CertificationProgram))%>%
+#addLegend(pal=pal,values = stroke2acute$CertificationProgram,title = "Cluster GWTG ECR Hospitals") %>%
+
+#add layer control
+#addLayersControl(overlayGroups = c("GWTG Certification Program", "Cluster GWTG ECR Hospitals"),options = layersControlOptions(collapsed = TRUE)) %>%
+
+addMeasure(primaryLengthUnit = "meters",
+                primaryAreaUnit = "sqmeters",
+                activeColor = "red",
+                completedColor = "red") %>%
+addMiniMap(toggleDisplay = TRUE)
+#
+m
+
+htmlwidgets::saveWidget(m,file="US.html")
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
