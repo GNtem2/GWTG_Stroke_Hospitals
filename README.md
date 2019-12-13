@@ -4,4 +4,4 @@ https://gntem2.github.io/RhodeIsland).
 
 
 
-[![US Map](https://www.frontiersin.org/articles/10.3389/fneur.2014.00176/full)](https://www.frontiersin.org/articles/10.3389/fneur.2014.00176/full)
+[![US Map](./US.html)]
